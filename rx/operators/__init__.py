@@ -611,7 +611,8 @@ def delay(duetime: typing.RelativeTime,
 
 
 def distinct(key_mapper: Optional[Mapper] = None,
-             comparer: Optional[Comparer] = None
+             comparer: Optional[Comparer] = None,
+             flushes: Observable = None,
              ) -> Callable[[Observable], Observable]:
     """Returns an observable sequence that contains only distinct
     elements according to the key_mapper and the comparer. Usage of
@@ -635,6 +636,7 @@ def distinct(key_mapper: Optional[Mapper] = None,
         key_mapper: [Optional]  A function to compute the comparison
             key for each element.
         comparer: [Optional]  Used to compare items in the collection.
+        flushes: [Optional] Observable for flushing the internal HashSet of the operator.
 
     Returns:
         An operator function that takes an observable source and
@@ -643,7 +645,7 @@ def distinct(key_mapper: Optional[Mapper] = None,
         sequence.
     """
     from rx.core.operators.distinct import _distinct
-    return _distinct(key_mapper, comparer)
+    return _distinct(key_mapper, comparer, flushes)
 
 
 def distinct_until_changed(key_mapper: Optional[Mapper] = None,
@@ -2521,12 +2523,16 @@ def skip_with_time(duration: typing.RelativeTime, scheduler: Optional[typing.Sch
 
 def slice(start: Optional[int] = None,
           stop: Optional[int] = None,
-          step: int = 1
+          step: Optional[int] = None
           ) -> Callable[[Observable], Observable]:
     """The slice operator.
 
-    Slices the given observable. It is basically a wrapper around the
-    operators skip(), skip_last(), take(), take_last() and filter().
+    Slices the given observable. It is basically a wrapper around the operators
+    :func:`skip <rx.operators.skip>`,
+    :func:`skip_last <rx.operators.skip_last>`,
+    :func:`take <rx.operators.take>`,
+    :func:`take_last <rx.operators.take_last>` and
+    :func:`filter <rx.operators.filter>`.
 
     .. marble::
         :alt: slice
@@ -2541,7 +2547,8 @@ def slice(start: Optional[int] = None,
         >>> result = source.slice(1, -1, 2)
 
     Args:
-        stop:Last element to take of skip last
+        start: First element to take of skip last
+        stop: Last element to take of skip last
         step: Takes every step element. Must be larger than zero
 
     Returns:
