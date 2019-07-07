@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+
 from typing import Callable, Optional
 from rx.core import Observable
 from rx.core.typing import Mapper, Comparer
+from rx.disposable import CompositeDisposable
 from rx.internal.basic import default_comparer
 
 
@@ -11,24 +14,34 @@ def array_index_of_comparer(array, item, comparer):
     return -1
 
 
+@contextmanager
+def nullcontext():
+    """For Python 3.6 compatibility
+    """
+    yield
+
+
 class HashSet:
-    def __init__(self, comparer):
+    def __init__(self, comparer, lock=None):
         self.comparer = comparer
         self.set = []
+        self.lock = lock
 
     def push(self, value):
-        ret_value = array_index_of_comparer(self.set, value, self.comparer) == -1
-        if ret_value:
-            self.set.append(value)
-        return ret_value
+        with self.lock or nullcontext():
+            ret_value = array_index_of_comparer(self.set, value, self.comparer) == -1
+            if ret_value:
+                self.set.append(value)
+            return ret_value
 
     def flush(self):
-        self.set = []
+        with self.lock or nullcontext():
+            self.set = []
 
 
 def _distinct(key_mapper: Optional[Mapper] = None,
               comparer: Optional[Comparer] = None,
-              flushes: Observable = None,
+              flushes: Optional[Observable] = None,
               ) -> Callable[[Observable], Observable]:
     comparer = comparer or default_comparer
 
@@ -51,14 +64,7 @@ def _distinct(key_mapper: Optional[Mapper] = None,
         """
 
         def subscribe(observer, scheduler=None):
-            hashset = HashSet(comparer)
-
-            if flushes:
-                disposable = flushes.subscribe_(lambda _: hashset.flush(), scheduler=scheduler)
-                source.subscribe_(on_error=lambda _: disposable.dispose(),
-                                  on_completed=lambda: disposable.dispose(),
-                                  scheduler=scheduler
-                                  )
+            hashset = HashSet(comparer, lock=flushes.lock if flushes else None)
 
             def on_next(x):
                 key = x
@@ -71,6 +77,14 @@ def _distinct(key_mapper: Optional[Mapper] = None,
                         return
 
                 hashset.push(key) and observer.on_next(x)
-            return source.subscribe_(on_next, observer.on_error, observer.on_completed, scheduler)
+
+            source_disposable = source.subscribe_(on_next, observer.on_error, observer.on_completed, scheduler)
+
+            if flushes:
+                flushes_disposable = flushes.subscribe_(lambda _: hashset.flush(), scheduler=scheduler)
+                return CompositeDisposable(source_disposable, flushes_disposable)
+
+            return source_disposable
+
         return Observable(subscribe)
     return distinct
